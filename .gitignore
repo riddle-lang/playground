@@ -1,0 +1,19 @@
+# Rust
+target/
+riddle-src/
+
+# Node
+node_modules/
+packages/web/.next/
+packages/web/out/
+
+# WASM artifacts are committed intentionally; exclude local build dirs only
+packages/compiler/pkg/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI
+.claude/
+
