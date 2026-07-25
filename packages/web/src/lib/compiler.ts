@@ -35,7 +35,9 @@ export async function loadCompiler(): Promise<void> {
     const wasmModule = await import(
       /* webpackIgnore: true */ `${BASE}/wasm/riddle_compiler_wasm.js`
     );
-    await wasmModule.default(`${BASE}/wasm/riddle_compiler_wasm_bg.wasm`);
+    await wasmModule.default({
+      module_or_path: `${BASE}/wasm/riddle_compiler_wasm_bg.wasm`,
+    });
     wasm = wasmModule;
     // Expose globally so riddleExtension.ts can call WASM functions
     // without re-importing (avoids circular imports).

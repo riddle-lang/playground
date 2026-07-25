@@ -1,7 +1,8 @@
 # Riddle Playground
 
 An in-browser playground for the [Riddle language](https://github.com/riddle-lang/riddle),
-powered by a WebAssembly-compiled compiler.
+powered by the compiler and browser-safe analysis modules from `riddle-lsp`, compiled to
+WebAssembly.
 
 **Live:** https://riddle-lang.github.io/playground/
 
@@ -9,12 +10,11 @@ powered by a WebAssembly-compiled compiler.
 
 ```
 packages/
-  compiler/   Rust → WASM crate (wraps riddlec pipeline)
+  compiler/   Rust → WASM adapter over riddlec and riddle-lsp
   web/        Next.js frontend (CodeMirror 6 editor)
 .github/
   workflows/
-    build-compiler.yml  Manual: clone riddle → compile WASM → commit
-    deploy.yml          Auto:   push to main → deploy to GitHub Pages
+    deploy.yml  clone riddle → build WASM + web → deploy a Pages artifact
 ```
 
 ## Local development
@@ -37,7 +37,9 @@ npm install
 npm run dev
 ```
 
-## Updating the compiler
+## Deployment
 
-Trigger the **Build WASM Compiler** workflow manually from the Actions tab,
-optionally specifying a branch/tag/SHA of the riddle repo.
+Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
+No deployment branch is used: pushes to `main` upload `packages/web/out` as a Pages
+artifact and deploy it directly. The workflow always checks out the latest Riddle `main`;
+manual runs can instead select a branch, tag, or commit SHA with `riddle_ref`.

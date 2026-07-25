@@ -9,6 +9,11 @@ crate-type = ["cdylib"]
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false   # binaryen not available in this env; CI can re-enable
 
+[features]
+default = ["test-support"]
+# The upstream source-only LSP helpers use this feature gate.
+test-support = []
+
 [dependencies]
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -19,4 +24,6 @@ type-checker = { path = "../riddle-src/crates/type-checker" }
 frontend     = { path = "../riddle-src/crates/frontend" }
 hir          = { path = "../riddle-src/crates/hir" }
 scope-graph  = { path = "../riddle-src/crates/scope-graph" }
+clue         = { path = "../riddle-src/app/clue" }
+lsp-types    = "0.94.1"
 rowan        = "0.16.1"

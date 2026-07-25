@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check:wasm": "node scripts/smoke-wasm.mjs",
     "start": "next start",
     "lint": "next lint"
   },

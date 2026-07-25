@@ -7,8 +7,9 @@ node_modules/
 packages/web/.next/
 packages/web/out/
 
-# WASM artifacts are committed intentionally; exclude local build dirs only
+# WASM artifacts are generated locally and in the Pages workflow
 packages/compiler/pkg/
+packages/web/public/wasm/
 
 # OS
 .DS_Store
@@ -16,4 +17,3 @@ Thumbs.db
 
 # AI
 .claude/
-

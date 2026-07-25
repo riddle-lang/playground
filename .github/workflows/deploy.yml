@@ -3,21 +3,41 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-  workflow_run:
-    workflows: ["Build WASM Compiler"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      riddle_ref:
+        description: Riddle branch, tag, or commit SHA
+        default: main
+        required: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    # Only deploy when WASM build succeeded (or when pushed directly)
-    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
-    permissions:
-      contents: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout playground
+        uses: actions/checkout@v7
+
+      - name: Checkout Riddle and riddle-lsp
+        uses: actions/checkout@v7
+        with:
+          repository: riddle-lang/riddle
+          ref: ${{ inputs.riddle_ref || 'main' }}
+          path: packages/riddle-src
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: jetli/wasm-pack-action@v0.4.0
 
       - uses: actions/setup-node@v4
         with:
@@ -25,17 +45,47 @@ jobs:
           cache: npm
           cache-dependency-path: packages/web/package-lock.json
 
-      - name: Install dependencies
-        run: cd packages/web && npm ci
+      - name: Build riddle-lsp browser module
+        run: >-
+          wasm-pack build packages/compiler
+          --target web
+          --out-dir ../web/public/wasm
+          --release
 
-      - name: Build
-        run: cd packages/web && npm run build
-        env:
-          NODE_ENV: production
+      - name: Record Riddle revision
+        run: git -C packages/riddle-src rev-parse HEAD > packages/web/public/wasm/riddle-sha.txt
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Check riddle-lsp browser module
+        working-directory: packages/web
+        run: npm run check:wasm
+
+      - name: Install web dependencies
+        working-directory: packages/web
+        run: npm ci
+
+      - name: Build static site
+        working-directory: packages/web
+        run: npm run build
+
+      - name: Verify deployment files
+        run: |
+          test -s packages/web/out/wasm/riddle_compiler_wasm.js
+          test -s packages/web/out/wasm/riddle_compiler_wasm_bg.wasm
+          test -s packages/web/out/wasm/riddle-sha.txt
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: packages/web/out
-          cname: ''   # no custom domain; served at riddle-lang.github.io/playground
+          path: packages/web/out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

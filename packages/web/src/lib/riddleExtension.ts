@@ -12,7 +12,7 @@ import {
   ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { Extension, StateEffect, StateField, Range } from '@codemirror/state';
+import { Extension, StateEffect, StateField, Range, Text } from '@codemirror/state';
 import {
   autocompletion,
   CompletionContext,
@@ -128,9 +128,21 @@ export const riddleTheme = EditorView.theme({
 // ---------------------------------------------------------------------------
 // 3. Semantic token types (indices match TT_* in lib.rs)
 // ---------------------------------------------------------------------------
-interface SemToken { start: number; length: number; type: number; mods: number; }
-interface WasmInlayHint { offset: number; label: string; }
-interface WasmCompletion { label: string; kind: number; detail?: string; }
+interface SemToken {
+  deltaLine: number;
+  deltaStart: number;
+  length: number;
+  tokenType: number;
+  tokenModifiersBitset: number;
+}
+interface WasmInlayHint { line: number; character: number; label: string; }
+interface WasmCompletion {
+  label: string;
+  kind?: number;
+  detail?: string;
+  insertText?: string;
+  labelDetails?: { detail?: string; description?: string };
+}
 
 const TOKEN_CLASSES: (string | null)[] = [
   'rl-keyword',   // 0  keyword
@@ -166,14 +178,20 @@ const semanticField = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f),
 });
 
-function buildSemanticDecos(tokens: SemToken[], docLen: number): DecorationSet {
+function buildSemanticDecos(tokens: SemToken[], doc: Text): DecorationSet {
   const ranges: Range<Decoration>[] = [];
+  let line = 0;
+  let character = 0;
   for (const tok of tokens) {
-    const from = tok.start;
-    const to   = tok.start + tok.length;
-    if (from >= to || to > docLen) continue;
-    const isMut = (tok.mods & 2) !== 0;
-    const cls = isMut ? 'rl-mut' : (TOKEN_CLASSES[tok.type] ?? null);
+    line += tok.deltaLine;
+    character = tok.deltaLine === 0 ? character + tok.deltaStart : tok.deltaStart;
+    if (line >= doc.lines) continue;
+    const docLine = doc.line(line + 1);
+    const from = docLine.from + character;
+    const to = from + tok.length;
+    if (from >= to || to > docLine.to) continue;
+    const isMut = (tok.tokenModifiersBitset & 2) !== 0;
+    const cls = isMut ? 'rl-mut' : (TOKEN_CLASSES[tok.tokenType] ?? null);
     if (!cls) continue;
     ranges.push(Decoration.mark({ class: cls }).range(from, to));
   }
@@ -217,12 +235,15 @@ const inlayField = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f),
 });
 
-function buildInlayDecos(hints: WasmInlayHint[], docLen: number): DecorationSet {
+function buildInlayDecos(hints: WasmInlayHint[], doc: Text): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   for (const h of hints) {
-    if (h.offset > docLen) continue;
+    if (h.line >= doc.lines) continue;
+    const line = doc.line(h.line + 1);
+    const offset = line.from + h.character;
+    if (offset > line.to) continue;
     ranges.push(
-      Decoration.widget({ widget: new InlayWidget(h.label), side: 1 }).range(h.offset),
+      Decoration.widget({ widget: new InlayWidget(h.label), side: 1 }).range(offset),
     );
   }
   return Decoration.set(ranges, true);
@@ -258,12 +279,12 @@ const riddleHighlightPlugin = ViewPlugin.fromClass(
 
         const semTokens  = wasm.riddle_semantic_tokens(source) as SemToken[];
         const inlayHints = wasm.riddle_inlay_hints(source) as WasmInlayHint[];
-        const docLen = this.view.state.doc.length;
+        const doc = this.view.state.doc;
 
         this.view.dispatch({
           effects: [
-            setSemanticDecos.of(buildSemanticDecos(semTokens, docLen)),
-            setInlayDecos.of(buildInlayDecos(inlayHints, docLen)),
+            setSemanticDecos.of(buildSemanticDecos(semTokens, doc)),
+            setInlayDecos.of(buildInlayDecos(inlayHints, doc)),
           ],
         });
       } catch (e) {
@@ -280,10 +301,12 @@ const riddleHighlightPlugin = ViewPlugin.fromClass(
 // ---------------------------------------------------------------------------
 // 7. Autocompletion source
 // ---------------------------------------------------------------------------
-const KIND_LABELS: string[] = [
-  '', 'keyword', 'function', 'method', 'variable',
-  'class', 'enum', 'interface', 'namespace', 'constant', 'type', 'property',
-];
+const KIND_LABELS: Record<number, string> = {
+  1: 'text', 2: 'method', 3: 'function', 4: 'function', 5: 'property',
+  6: 'variable', 7: 'class', 8: 'interface', 9: 'namespace', 10: 'property',
+  12: 'constant', 13: 'enum', 14: 'keyword', 20: 'enum', 21: 'constant',
+  22: 'class', 25: 'type',
+};
 
 async function riddleCompletionSource(ctx: CompletionContext): Promise<CompletionResult | null> {
   try {
@@ -291,14 +314,22 @@ async function riddleCompletionSource(ctx: CompletionContext): Promise<Completio
     const wasm = (globalThis as any).__riddleWasm as Record<string, (...args: unknown[]) => unknown> | undefined;
     if (!wasm) return null;
     const source = ctx.state.doc.toString();
-    const rawItems = wasm.riddle_completions(source, ctx.pos) as WasmCompletion[];
+    const line = ctx.state.doc.lineAt(ctx.pos);
+    const rawItems = wasm.riddle_completions(
+      source,
+      line.number - 1,
+      ctx.pos - line.from,
+    ) as WasmCompletion[];
     if (!rawItems?.length) return null;
     const wordMatch = ctx.matchBefore(/[\w_]+/);
     const from = wordMatch ? wordMatch.from : ctx.pos;
     const options: Completion[] = rawItems.map(item => ({
       label:  item.label,
-      type:   KIND_LABELS[item.kind] ?? 'text',
-      detail: item.detail,
+      type:   item.kind == null ? 'text' : (KIND_LABELS[item.kind] ?? 'text'),
+      detail: [item.labelDetails?.detail, item.labelDetails?.description, item.detail]
+        .filter(Boolean)
+        .join(' '),
+      apply: item.insertText ?? item.label,
     }));
     return { from, options, validFor: /^[\w_]*$/ };
   } catch {
