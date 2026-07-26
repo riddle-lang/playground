@@ -142,36 +142,29 @@ export default function COutput({ cSource, loading, compileError, functions = []
   }, []);
 
   // ── Loading / error / empty states ──────────────────────────────────────
-  if (loading) {
-    return (
-      <div style={centeredStyle}>
-        <Spinner />
-        <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 8 }}>Compiling…</span>
-      </div>
-    );
-  }
-
-  if (compileError) {
-    return (
-      <div style={{ flex: 1, padding: 16, color: 'var(--error)', fontSize: 12, fontFamily: 'var(--font-mono)', overflow: 'auto' }}>
-        {compileError}
-      </div>
-    );
-  }
-
-  if (!cSource) {
-    return (
-      <div style={{ ...centeredStyle, flexDirection: 'column', gap: 8 }}>
-        <span style={{ fontSize: 22, opacity: 0.3 }}>▶</span>
-        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Press Run to compile to C</span>
-      </div>
-    );
-  }
+  // Rendered as an overlay, never by unmounting the editor container: React
+  // removing that div would detach the CodeMirror DOM, and the build effect
+  // above won't re-attach it when the recompiled C source is byte-identical.
+  const overlay = loading ? (
+    <>
+      <Spinner />
+      <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 8 }}>Compiling…</span>
+    </>
+  ) : compileError ? (
+    <span style={{ alignSelf: 'stretch', padding: 16, color: 'var(--error)', fontSize: 12, fontFamily: 'var(--font-mono)', overflow: 'auto' }}>
+      {compileError}
+    </span>
+  ) : !cSource ? (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 22, opacity: 0.3 }}>▶</span>
+      <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Press Run to compile to C</span>
+    </div>
+  ) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Jump bar */}
-      {functions.length > 0 && (
+      {cSource && functions.length > 0 && (
         <div style={{
           flexShrink: 0,
           display: 'flex',
@@ -211,17 +204,24 @@ export default function COutput({ cSource, loading, compileError, functions = []
       )}
 
       {/* CodeMirror C editor */}
-      <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+        <div ref={containerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }} />
+        {overlay && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--bg-panel)',
+          }}>
+            {overlay}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-const centeredStyle: React.CSSProperties = {
-  flex: 1,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
 
 function Spinner() {
   return (
