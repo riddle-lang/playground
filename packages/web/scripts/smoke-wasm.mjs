@@ -22,4 +22,22 @@ const completion = wasm.riddle_completions(completionSource, 1, 7)
   .find((item) => item.label === 'return');
 assert.equal(typeof completion.kind, 'number');
 
+const diagnosticSource = `// 中文
+struct Point { value: i32 }
+fun main() {
+    let point = Point { value: 1 };
+    let moved = point;
+    let reused = point;
+}
+`;
+const diagnostic = wasm.riddle_check(diagnosticSource).diagnostics
+  .find((item) => item.code === 'E0100');
+const expectedStart = diagnosticSource.lastIndexOf('point;');
+assert.equal(diagnostic.start, expectedStart);
+assert.equal(diagnostic.end, expectedStart + 'point'.length);
+assert.equal(diagnostic.startLine, 5);
+assert.equal(diagnostic.startCharacter, 17);
+assert.equal(diagnostic.endLine, 5);
+assert.equal(diagnostic.endCharacter, 22);
+
 console.log('riddle-lsp WASM smoke check passed');

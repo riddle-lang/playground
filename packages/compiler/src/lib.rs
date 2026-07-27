@@ -71,11 +71,16 @@ mod diagnostics {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
     pub severity: String,
     pub message: String,
     pub start: u32,
     pub end: u32,
+    pub start_line: u32,
+    pub start_character: u32,
+    pub end_line: u32,
+    pub end_character: u32,
     pub code: Option<String>,
 }
 
@@ -122,16 +127,53 @@ fn primary_range(diagnostic: &type_checker::Diagnostic) -> (u32, u32) {
         .unwrap_or((0, 0))
 }
 
-fn collect_diagnostics(result: &CompileResult) -> Vec<Diagnostic> {
+fn diagnostic(
+    source: &str,
+    severity: &str,
+    message: String,
+    start: u32,
+    end: u32,
+    code: Option<String>,
+) -> Diagnostic {
+    let position = |offset: u32| {
+        let mut byte_offset = (offset as usize).min(source.len());
+        while !source.is_char_boundary(byte_offset) {
+            byte_offset -= 1;
+        }
+        let position = diagnostics::position(source, byte_offset);
+        (
+            source[..byte_offset].encode_utf16().count() as u32,
+            position,
+        )
+    };
+    let (start, start_position) = position(start);
+    let (end, end_position) = position(end);
+    Diagnostic {
+        severity: severity.into(),
+        message,
+        start,
+        end,
+        start_line: start_position.line,
+        start_character: start_position.character,
+        end_line: end_position.line,
+        end_character: end_position.character,
+        code,
+    }
+}
+
+fn collect_diagnostics(result: &CompileResult, source: &str) -> Vec<Diagnostic> {
     let mut output = result
         .parse_errors
         .iter()
-        .map(|error| Diagnostic {
-            severity: "error".into(),
-            message: error.message.clone(),
-            start: u32::from(error.span.start()),
-            end: u32::from(error.span.end()),
-            code: None,
+        .map(|error| {
+            diagnostic(
+                source,
+                "error",
+                error.message.clone(),
+                u32::from(error.span.start()),
+                u32::from(error.span.end()),
+                None,
+            )
         })
         .collect::<Vec<_>>();
     for diagnostics in [
@@ -139,15 +181,16 @@ fn collect_diagnostics(result: &CompileResult) -> Vec<Diagnostic> {
         &result.type_result.diagnostics,
         &result.analysis_diagnostics,
     ] {
-        output.extend(diagnostics.iter().map(|diagnostic| {
-            let (start, end) = primary_range(diagnostic);
-            Diagnostic {
-                severity: severity_str(diagnostic.severity).into(),
-                message: diagnostic.message.clone(),
+        output.extend(diagnostics.iter().map(|item| {
+            let (start, end) = primary_range(item);
+            diagnostic(
+                source,
+                severity_str(item.severity),
+                item.message.clone(),
                 start,
                 end,
-                code: (!diagnostic.code.is_empty()).then(|| diagnostic.code.to_string()),
-            }
+                (!item.code.is_empty()).then(|| item.code.to_string()),
+            )
         }));
     }
     output
@@ -158,7 +201,7 @@ pub fn riddle_check(source: &str) -> JsValue {
     let result = check_with_options(source, CompileOptions::default());
     serde_wasm_bindgen::to_value(&CompileOutput {
         success: result.success(),
-        diagnostics: collect_diagnostics(&result),
+        diagnostics: collect_diagnostics(&result, source),
         c_source: None,
     })
     .unwrap()
@@ -173,7 +216,7 @@ pub fn riddle_compile(source: &str) -> JsValue {
         .and_then(|module| generate_c(module).ok());
     serde_wasm_bindgen::to_value(&CompileOutput {
         success: result.success(),
-        diagnostics: collect_diagnostics(&result),
+        diagnostics: collect_diagnostics(&result, source),
         c_source,
     })
     .unwrap()

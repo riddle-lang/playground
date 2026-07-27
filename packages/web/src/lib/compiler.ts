@@ -11,6 +11,10 @@ export interface Diagnostic {
   message: string;
   start: number;
   end: number;
+  startLine: number;
+  startCharacter: number;
+  endLine: number;
+  endCharacter: number;
   code?: string;
 }
 

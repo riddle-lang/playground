@@ -66,7 +66,7 @@ export default function DiagPanel({ diagnostics, loading }: DiagPanelProps) {
                 {d.message}
               </span>
               <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
-                {d.start}–{d.end}
+                {d.startLine + 1}:{d.startCharacter + 1}–{d.endLine + 1}:{d.endCharacter + 1}
               </div>
             </div>
           </div>
