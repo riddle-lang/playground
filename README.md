@@ -43,12 +43,5 @@ Set **Settings → Pages → Build and deployment → Source** to **GitHub Actio
 No deployment branch is used: builds upload `packages/web/out` as a Pages artifact and
 deploy it directly.
 
-Each push to the Riddle `main` branch dispatches its exact commit SHA to this repository,
-which rebuilds and redeploys the playground. Configure this once in `riddle-lang/riddle`:
-
-1. Create a fine-grained personal access token limited to `riddle-lang/playground` with
-   **Contents: Read and write** permission.
-2. Add it as the Riddle Actions secret `PLAYGROUND_DISPATCH_TOKEN`.
-
-Pushes to this repository's `main` branch also deploy with the latest Riddle `main`.
-Manual runs can select a branch, tag, or commit SHA with `riddle_ref`.
+Pushes to this repository's `main` branch deploy with the latest Riddle `main`.
+Manual runs can select a Riddle branch, tag, or commit SHA with `riddle_ref`.
